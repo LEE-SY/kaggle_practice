@@ -1,132 +1,159 @@
-#update.packages("ReadStat");
-#install.packages("dplyr")
-#install.packages("readxl")
-#install.packages("haven")
-#install.packages("ggplot2")
-
-#install.packages("pdftools")
-#install.packages("tidyverse")
-#install.packages("ggthemes")
-#install.packages("ggrepel")
-#install.packages("tm")
-#install.packages("stringi")
-#install.packages("PerformanceAnalytics")
-
-
-pckg<-c("dplyr","readxl","haven","ggplot2","pdftools", "tidyverse", "ggplot2", "ggthemes", "ggrepel", "tm", "grid","PerformanceAnalytics")
-sapply(pckg,library,character.only=TRUE)
-
-
-library(dplyr); #edit
-library(readxl); #excel load
-library(doBy);
-library(fmsb); # radar chart
-library(ggplot2); #visualization
-library(corrplot);# correlation
-library(VIM); #missing data detection
-library(DMwR); #outlier detection
-library(corrplot); #correlation plot
-library(PerformanceAnalytics); #correlation chart
-library(rpart); #decision tree
-library(rattle); #decision tree fancy tree
-library(rpart.plot); #decision tree fancy tree
-library(RColorBrewer); #decision tree fancy tree
-library(ipred); # bagging
-library(randomForest); # random forest
-library(adabag); # adaptive boosting
-library(lme4); #dummy function
-library(caret); #standard
-library(class); #KNN 
-library(VennDiagram); #VennDiagram
-library(neuralnet); #ann
-library(e1071); #SVM
-library(ROCR); #ROC
-
-
-
-
-
-
-
-
-
+pckg<-c("dplyr","readxl","haven","ggplot2","pdftools", "tidyverse",
+        "ggplot2", "ggthemes", "ggrepel", "tm", "grid","PerformanceAnalytics",
+        "e1071","doBy","fmsb","corrplot","VIM","DMwR","rpart",
+        "rattle","rpart.plot","RColorBrewer","ipred",
+        "randomForest","adabag","lme4","caret","class","ROCR","Imap","caret","randomForest","naniar","gridExtra","GGally","leaflet")
+#sapply(pckg,install.packages,character.only=TRUE) #library loading
+sapply(pckg, function(x) require(x,quietly=TRUE,character.only=TRUE,warn.conflicts = FALSE )) #library loading
 
 
 
 memory.limit();
 memory.limit(100000000000);
 
-kc_house<-read.csv("kc_house_data.csv", na.strings = "NA",stringsAsFactors = FALSE)
+kc_house<-read.csv("kc_house_data.csv", na.strings = "NA",stringsAsFactors = FALSE) #data loading
+
+
+#missing data
+
+apply(kc_house,MARGIN=2,FUN=any_na)
+kc_house[!complete.cases(kc_house),]
+
+#outlier 
+
+for (i in (3:ncol(kc_house))) {
+  
+  lower<-kc_house[which(kc_house[,i]<quantile(kc_house[,i],c(0.01))),]
+  assign(paste(colnames(kc_house)[i],"_out_low",sep=""),lower)
+  
+  up<-kc_house[which(kc_house[,i]>quantile(kc_house[,i],c(0.99))),]
+  assign(paste(colnames(kc_house)[i],"_out_up",sep=""),up)
+}
+
+
 
 #test/training split
 
-## 75% of the sample size
-smp_size <- floor(0.75 * nrow(kc_house))
+smp_size <- floor(0.75 * nrow(kc_house)) # 75% of the sample size
 
 ## set the seed to make your partition reproducible
 set.seed(123)
 train_ind <- sample(seq_len(nrow(kc_house)), size = smp_size)
 
-kc_house <- kc_house[train_ind, ]
-test <- kc_house[-train_ind, ]
-
-#variable correlation
-
-colnames(kc_house)
+kc_house<- kc_house[train_ind, ]
+kc_house_test <- kc_house[-train_ind, ]
 
 
-chart.Correlation(kc_house[,c("price","bedrooms","bathrooms","sqft_living","sqft_lot",
-                              "floors", "view","condition","grade","sqft_above",
-                              "sqft_basement","yr_built","yr_renovated","lat","long","sqft_living15","sqft_lot15" )], pch = 19, method = "pearson")
+fac_var<-c("waterfront","yr_built","yr_renovated","zipcode","grade")
+
+
+unique(kc_house$yr_built)
+
+
+##overal EDA
+
+sapply(kc_house,class)
+kc_house[,fac_var]<-apply(kc_house[,fac_var],MARGIN=2,FUN=as.factor)
+
+unique_zipcode<-unique(kc_house$zipcode)
+
+kc_house$zipcode<-factor(kc_house$zipcode,levels=unique_zipcode)
+
+str(kc_house$zipcode)
+str(kc_house$yr_built)
+str(kc_house$waterfront)
+
+
+fac_var<-c("waterfront","yr_built","yr_renovated","zipcode","grade")
+num_var<-c("price","bedrooms","bathrooms","sqft_living","sqft_lot","floors","view","condition","sqft_above","sqft_basement","lat","long","sqft_living15","sqft_lot15")
 
 
 
 
 
+kc_house$waterfront<-as.factor(kc_house$waterfront)
+kc_house$yr_built<-as.factor(kc_house$yr_built)
+kc_house$yr_renovated<-as.factor(kc_house$yr_renovated)
+kc_house$zipcode<-as.factor(kc_house$zipcode)
+kc_house$grade<-as.factor(kc_house$grade)
+
+
+#numerical value
+chart.Correlation(kc_house[,num_var], pch = 19, method = "pearson")
 
 
 
-#price category split
+
+###feature engineering
+
+##date and year built
+kc_house$age_sold<-as.numeric(substr(kc_house$date,1,4))-kc_house$yr_built
+
+
+v1 <- ggplot(kc_house, aes(yr_built)) +
+  geom_bar(fill = "dodgerblue3") +
+  ggtitle("the number of houses built by year") +
+  theme_classic() +
+  theme(text = element_text(face ="bold"),
+        plot.title = element_text(hjust = 0.5))
+
+
+v2 <- ggplot(kc_house, aes(yr_built, price)) +
+  geom_smooth(se = TRUE, colour = "dodgerblue3") +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 8)) +
+  ggtitle("the price trend of houses built by year") +
+  theme_classic() +
+  theme(text = element_text(face = "bold"),
+        plot.title=element_text(hjust=0.5))
+
+price_yr<- grid.arrange(v1,v2)
+price_yr
+
+
+v3 <- ggplot(price_out_up, aes(price)) +
+  geom_histogram(fill = "dodgerblue3",binwidth = 100000) +
+  ggtitle("upper price outlier") +
+  theme_classic() +
+  theme(text = element_text(face ="bold"),
+        plot.title = element_text(hjust = 0.5))
+
+ v4 <- ggplot(price_out_low, aes(price)) +
+    geom_histogram(fill = "dodgerblue3",binwidth = 5000) +
+    ggtitle("lower price outlier") +
+    theme_classic() +
+    theme(text = element_text(face ="bold"),
+          plot.title = element_text(hjust = 0.5))
+
+ price_outlier<- grid.arrange(v3,v4)
+ price_outlier
+
+
+
+##price category split by quantile
+
 kc_house$price_rank<-rank(-kc_house$price,na.last="keep")
+kc_house<-kc_house%>%arrange(desc(kc_house$price)) #price rank
 
-
-kc_house<-kc_house%>%arrange(desc(kc_house$price))
-
-ggplot(data=kc_house,aes(x=price_rank,y=lat))+geom_jitter()
-ggplot(data=kc_house,aes(x=lat,y=price_rank))+geom_jitter()
-ggplot(data=kc_house,aes(x=long,y=price_rank))+geom_jitter()
 summary(kc_house$price)
 
-
-
-quantile(kc_house$price)[1]
+quantile(kc_house$price)[1] #qunatile
 quantile(kc_house$price)[2]
 quantile(kc_house$price)[3]
 quantile(kc_house$price)[4]
 quantile(kc_house$price)[5]
 
 
-kc_house[which(kc_house$price>=quantile(kc_house$price)[4]),c("price_q")]<-c("1")
+kc_house[which(kc_house$price>=quantile(kc_house$price)[4]),c("price_q")]<-c("1") #price qunatile 
 kc_house[which(kc_house$price<quantile(kc_house$price)[4] & kc_house$price>=quantile(kc_house$price)[3]),c("price_q")]<-c("2")
 kc_house[which(kc_house$price<quantile(kc_house$price)[3] & kc_house$price>=quantile(kc_house$price)[2]),c("price_q")]<-c("3")
 kc_house[which(kc_house$price<quantile(kc_house$price)[2]),c("price_q")]<-c("4")
 
 
-ggplot(data=kc_house,mapping=aes(x=long,y=lat,color=price_q))+geom_point()
-ggplot(data=kc_house,mapping=aes(x=long,y=lat))+geom_point()+stat_density2d()
-
-ggplot(data=kc_house[which(kc_house$price_q=="1"),],mapping=aes(x=long,y=lat))+geom_point()+stat_density2d()
-ggplot(data=kc_house[which(kc_house$price_q=="2"),],mapping=aes(x=long,y=lat))+geom_point()+stat_density2d()
-ggplot(data=kc_house[which(kc_house$price_q=="3"),],mapping=aes(x=long,y=lat))+geom_point()+stat_density2d()
-ggplot(data=kc_house[which(kc_house$price_q=="4"),],mapping=aes(x=long,y=lat))+geom_point()+stat_density2d()
-
-
-
-
-
-
 summary(kc_house$lat)
 summary(kc_house$long)
+
+#location segmentation
 
 kc_house$lat_point<-NA
 kc_house$lat_point<-ifelse(kc_house$lat<47.2,1,
@@ -149,21 +176,44 @@ kc_house$long_point<-ifelse(kc_house$long<(-122.5),1,
 
 kc_house$location<-paste(kc_house$lat_point,kc_house$long_point,sep="")
 
-ggplot(data=kc_house,aes(x=as.factor(location),y=price))+geom_boxplot()
 
-ggplot(data=kc_house,aes(x=as.factor(price_q),y=location))+geom_jitter()
-
-df_2<-kc_house%>%group_by(location)%>%summarize(price=mean(price))
-df_3<-kc_house%>%group_by(location)%>%summarize(price=median(price))
-ggplot(data=df_2,aes(x=as.factor(location),y=price))+geom_col()
-ggplot(data=df_3,aes(x=as.factor(location),y=price))+geom_col()
+kc_house_q1<-kc_house[which(kc_house$price_q=="1"),]
+kc_house_q2<-kc_house[which(kc_house$price_q=="2"),]
+kc_house_q3<-kc_house[which(kc_house$price_q=="3"),]
+kc_house_q4<-kc_house[which(kc_house$price_q=="4"),]
 
 
-####DIST
+html_1<-leaflet() %>% 
+  setView(kc_house[1,c("long")],kc_house[1,c("lat")],zoom=10) %>%
+  addTiles() %>%
+  addMarkers(kc_house_q1[,c("long")],kc_house_q1[,c("lat")],clusterOptions = TRUE)
+
+html_2<-leaflet() %>% 
+  setView(kc_house[1,c("long")],kc_house[1,c("lat")],zoom=4) %>%
+  addTiles() %>%
+  addMarkers(kc_house_q2[,c("long")],kc_house_q2[,c("lat")],clusterOptions = TRUE)
+
+html_2
+
+html_3<-leaflet() %>% 
+  setView(kc_house[1,c("long")],kc_house[1,c("lat")],zoom=10) %>%
+  addTiles() %>%
+  addMarkers(kc_house_q3[,c("long")],kc_house_q3[,c("lat")],clusterOptions = TRUE)
+
+html_3
+
+html_4<-leaflet() %>% 
+  setView(kc_house[1,c("long")],kc_house[1,c("lat")],zoom=10) %>%
+  addTiles() %>%
+  addMarkers(kc_house_q4[,c("long")],kc_house_q4[,c("lat")],clusterOptions = TRUE)
+
+html_4
 
 
-#install.packages("Imap")
-library("Imap")
+
+
+
+##Distance calculation from the highest point
 
 kc_house$dist<-NA
 for (i in 1:nrow(kc_house)) {
@@ -175,29 +225,287 @@ for (i in 1:nrow(kc_house)) {
                                  units="km")
 }
 
-ggplot(data=kc_house,aes(x=dist,y=price))+geom_smooth()
-ggplot(data=kc_house,aes(x=dist,y=price))+geom_jitter()
+
+v5<-ggplot(kc_house,aes(dist,price))+
+  xlab("distance (km)")+
+  ylab("price (dollar)")+
+  geom_smooth(se=TRUE, colour="dodgerblue3")+
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 8)) +
+  ggtitle("the price by dist from the highest point") +
+  theme_classic()+
+  theme(text=element_text(face="bold"),
+        plot.title=element_text(hjust=0.5))
+
+v5
+
+
+
+
+#lot category split
+kc_house$lot_rank<-rank(-kc_house$sqft_lot,na.last="keep")
+kc_house<-kc_house%>%arrange(desc(kc_house$sqft_lot)) #lot rank
+
+quantile(kc_house$sqft_lot)[2]
+quantile(kc_house$sqft_lot)[3]
+quantile(kc_house$sqft_lot)[4]
+quantile(kc_house$sqft_lot)[5]
+
+qunatile_lot<-quantile(kc_house$sqft_lot, probs = seq(0, 1, 0.05), na.rm = FALSE, names = TRUE, type = 7)
+qunatile_lot[16]
+
+kc_house[which(kc_house$sqft_lot>=qunatile_lot[20]),c("sqft_lot_q")]<-c("1") #95%
+kc_house[which(kc_house$sqft_lot<qunatile_lot[20] & kc_house$sqft_lot>=qunatile_lot[19]),c("sqft_lot_q")]<-c("2") #90%
+kc_house[which(kc_house$sqft_lot<qunatile_lot[19] & kc_house$sqft_lot>=qunatile_lot[18]),c("sqft_lot_q")]<-c("3") #85%
+kc_house[which(kc_house$sqft_lot<qunatile_lot[18] & kc_house$sqft_lot>=qunatile_lot[17]),c("sqft_lot_q")]<-c("4") #80%
+kc_house[which(kc_house$sqft_lot<qunatile_lot[17] & kc_house$sqft_lot>=qunatile_lot[16]),c("sqft_lot_q")]<-c("5") #75%
+kc_house[which(kc_house$sqft_lot<qunatile_lot[16] & kc_house$sqft_lot>=qunatile_lot[11]),c("sqft_lot_q")]<-c("6") #50~75%
+kc_house[which(kc_house$sqft_lot<qunatile_lot[11] & kc_house$sqft_lot>=qunatile_lot[6]),c("sqft_lot_q")]<-c("7")  #25~50%
+kc_house[which(kc_house$sqft_lot<qunatile_lot[6]),c("sqft_lot_q")]<-c("8") #0~50%
+
+
+summary(kc_house[which(kc_house$sqft_lot_q=="1"),][7])
+
+
+ggplot(kc_house[which(kc_house$sqft_lot_q=="1"),],aes(sqft_lot))+
+  geom_histogram(binwidth=30000)+
+  theme_classic()
+  
+
+ggplot(kc_house[which(kc_house$sqft_lot_q=="6"),],aes(sqft_lot))+
+  geom_histogram(binwidth=50)+
+  theme_classic()
+
+ggplot(kc_house[which(kc_house$sqft_lot_q=="7"),],aes(sqft_lot))+
+  geom_histogram(binwidth=50)+
+  theme_classic()
+
+ggplot(kc_house[which(kc_house$sqft_lot_q=="8"),],aes(sqft_lot))+
+  geom_histogram(binwidth=50)+
+  theme_classic()
+
+
+
+#price_per_space 
+
+kc_house$price_per_lot<-kc_house$price/kc_house$sqft_lot
+kc_house$price_per_living<-kc_house$price/kc_house$sqft_living
+kc_house$price_per_all<-kc_house$price/(kc_house$sqft_lot+kc_house$sqft_living)
+summary(kc_house$price_per_lot)
+
+#base_binary_variable
+
+kc_house$sqft_base_bi<-NA
+kc_house$sqft_base_bi<-ifelse(kc_house$sqft_basement==0,"0","1")
+summary(kc_house$sqft_basement_log)
+
+#yr_built
+
+
+
+
+
+
+
+
+
+
+#rooms
+
+kc_house$bath_per_bed<-ifelse(kc_house$bedrooms==0,0,kc_house$bathrooms/kc_house$bedrooms)
+kc_house$rooms<-kc_house$bathrooms+kc_house$bedrooms
+kc_house$living_per_lot<-kc_house$sqft_living/kc_house$sqft_lot
+
+
+#date
+
+kc_house$trade_date<-substr(kc_house$date,1,6)
+ggplot(data=kc_house,aes(x=trade_date, y=price))+geom_boxplot() #bathroom per bedrooms
+
+# supply and demand
+
+kc_house%>%group_by(trade_date)%>%summarize(count=n())
+
+
+
+#summary for mean and median price per lot
+
+summary_1<-kc_house%>%group_by(location,grade)%>%summarize(avg_lot=mean(sqft_lot),avg_price=mean(price))
+summary_1$ration<-summary_1$avg_price/summary_1$avg_lot
+
+summary_2<-kc_house%>%group_by(location,grade)%>%summarize(m_lot=median(sqft_lot),m_price=median(price))
+summary_2$ration_2<-summary_2$m_price/summary_2$m_lot
+
+
+kc_house$f_key<-paste(kc_house$grade,kc_house$location,sep="")
+summary_1$f_key<-paste(summary_1$grade,summary_1$location,sep="")
+
+kc_house<-left_join(kc_house,summary_1,by="f_key")
+kc_house<-kc_house[,-c(42,43)]
+
+summary_2$f_key<-paste(summary_2$grade,summary_2$location,sep="")
+
+kc_house<-left_join(kc_house,summary_2,by="f_key")
+kc_house<-kc_house[,-c(45,46)]
+
+
+
+
+ggplot(data=summary_2%>%filter(grade==12),aes(x=location, y=ration_2))+geom_bar(stat="identity") 
+ggplot(data=summary_1,aes(x=location, y=ration))+geom_bar(stat="identity") 
+ggplot(data=kc_house,aes(x=location, y=sqft_lot))+geom_boxplot() 
+
+
+
+
+nearZeroVar(kc_house,saveMetrics=TRUE)
+findCorrelation(cor(DATA_cor))
+
+install.packages("FSelector")
+library(FSelector)
+
+colnames(kc_house)
+kc_house<-kc_house[,-c(14,16,35,36)]
+
+install.packages("randomForest")
+library(randomForest)
+
+
+skewness_col<-c("price","bedrooms","bathrooms","sqft_living","view","sqft_above","sqft_basement",
+                "sqft_living15","sqft_lot15","price_per_lot","price_per_living","price_per_all",
+                "yr_renovated_elapsed","living_per_lot")
+
+col_number(skewness_col)
+
+kc_house$price<-exp(kc_house$price)
+kc_house$sqft_living<-log(kc_house$sqft_living)
+kc_house$sqft_living15<-log(kc_house$sqft_living15)
+
+
+
+
+
 
 
 colnames(kc_house)
-
-chart.Correlation(kc_house[,c("price","bedrooms","bathrooms","sqft_living","sqft_lot",
-                              "floors", "view","condition","grade","sqft_above",
-                              "sqft_basement","yr_built","yr_renovated","lat","long","sqft_living15","sqft_lot15" )], pch = 19, method = "pearson")
+kc_house[,c(3,6,7,8,9,10,11,16,17,18,25,39)]<-scale(kc_house[,c(3,6,7,8,9,10,11,16,17,18,25,39)],center=TRUE,scale=TRUE)
 
 
 
+kc_house$location.x<-as.factor(kc_house$location.x)
+
+
+
+
+
+
+
+
+
+
+
+install.packages("kernlab")
+library(kernlab)
+m<-ksvm(price~.,data=kc_house)
+
+m
+
+
+
+
+
+
+
+model<-randomForest(price~sqft_living+sqft_lot+floors+waterfront+view+grade.x+lat+sqft_living15+location.x+long+avg_price+dist,data=kc_house,importance=TRUE)
+
+
+tuneRF(kc_house[,c("sqft_living","sqft_lot","floors","waterfront",
+                   "view","grade.x","lat","sqft_living15","location.x","long","avg_price","dist")],kc_house$price,mtryStart=8)
+
+
+grid<-expand.grid(ntree=c(300,400,500,600,700),mtry=c(4))
+grid
+
+
+randomForest(price~sqft_living+sqft_lot+floors+waterfront+view+grade.x+lat+sqft_living15+location.x+long+avg_price+dist,
+             data=kc_house,importance=TRUE,ntree=300,mtry=4)
+  
+ 
+
+randomForest(price~sqft_living+sqft_lot+floors+waterfront+view+grade.x+lat+sqft_living15+location.x+long+avg_price+dist,
+             data=kc_house,importance=TRUE,ntree=400,mtry=4)
+
+randomForest(price~sqft_living+sqft_lot+floors+waterfront+view+grade.x+lat+sqft_living15+location.x+long+avg_price+dist,
+             data=kc_house,importance=TRUE,ntree=500,mtry=4)
+
+randomForest(price~sqft_living+sqft_lot+floors+waterfront+view+grade.x+lat+sqft_living15+location.x+long+avg_price+dist+yr_built,
+             data=kc_house,importance=TRUE,ntree=600,mtry=4)
+
+randomForest(price~sqft_living+sqft_lot+floors+waterfront+view+grade.x+lat+sqft_living15+location.x+long+avg_price+dist,
+             data=kc_house,importance=TRUE,ntree=800,mtry=4)
+
+ 
+full_m<-lm(price~sqft_living+sqft_lot+floors+waterfront+view+grade.x+lat+sqft_living15+location.x+long+avg_price+dist,
+           data=kc_house)
+
+m<-lm(price~sqft_living+sqft_lot+floors+waterfront+view+grade.x+lat+sqft_living15+location.x+long+avg_price+dist,data=kc_house)
+m
+vif(m)
+
+null_m<-lm(price~1.,data=kc_house)
+
+forw_m<-step(null_m,direction="both",trace=1,scope=list(lower=null_m,upper=full_m))
+
+forw_m_2<-step(full_m,direction="backward",trace=1,scope=list(lower=null_m,upper=full_m))
+
+
+summary(forw_m_2)
+
+install.packages("VIF")
+library(VIF)
+vif(forw_m)
+
+
+xyplot(kc_house$price~predict(forw_m))
+xyplot(resid(forw_m)~predict(forw_m))
+
+kc_house<-read.csv("kc_house_data.csv", na.strings = "NA",stringsAsFactors = FALSE) 
+library(randomForest)
+
+randomForest(price~.,data=kc_house[,c(3:21)],importance=TRUE)
+
+
+
+importance(model)
+
+varImpPlot(model)
+
+#skewness of all variables
+# log transformation
+
+skewness(kc_house[,3], na.rm = FALSE, type = 3) # skewness is 4.28
+
+skewness_col<-c("price","bedrooms","bathrooms","sqft_living","view","sqft_above","sqft_basement",
+                "sqft_living15","sqft_lot15","price_per_lot","price_per_living","price_per_all",
+                "yr_renovated_elapsed","living_per_lot")
+colnames(kc_house)
+
+for (i in c(3:6,13,20,21,30,31,32,35,40)){
+  
+  kc_house[,i]<-log(kc_house[,i]+1) }
 
 #normalization
 
-for (i in c(3:8,10:14,20:21)) {
-
-kc_house[,i]<-scale(kc_house[,i],center=T,scale=T)
-
+for (i in c(3:8,10:14,20:21,27,30,31,32,35,37,38,39,40)) {
+  
+  kc_house[,i]<-scale(kc_house[,i],center=T,scale=T)
+  
 }
 
 
-kc_house$price<-log(kc_house$price)
+
+
+
 
 chart.Correlation(kc_house[,c("dist","price")], col=kc_house$location, pch = 19, method = "pearson")
 chart.Correlation(kc_house[,c("lat","price")], col=kc_house$location, pch = 19, method = "pearson")
@@ -205,331 +513,45 @@ chart.Correlation(kc_house[,c("lat","price")], col=kc_house$location, pch = 19, 
 
 
 
-sapply()
 
-kc_house$price_log<-log(kc_house$price)
-kc_house$price_normal<-normalize(kc_house$price)
-kc_house$price_log_normal<-normalize((kc_house$price_log))
 
-kc_house$sqft_living_log<-log(kc_house$sqft_living)
-kc_house$sqft_living_normal<-normalize(kc_house$sqft_living)
-kc_house$sqft_living_log_normal<-normalize(kc_house$sqft_living_log)
 
 
+#variable correlation
 
+colnames(kc_house)
 
+num_col<-c("price","bedrooms","bathrooms","sqft_living","sqft_lot",
+           "floors", "view","condition","grade.x","sqft_above",
+           "sqft_basement","yr_built","yr_renovated","lat","long","sqft_living15","sqft_lot15","avg_lot","avg_price","ration",
+           "m_lot","m_price","ration_2")
 
 
-ggplot(data=kc_house, mapping=aes(price))+geom_density()
-ggplot(data=kc_house, mapping=aes(price_normal))+geom_density()
-ggplot(data=kc_house, mapping=aes(price_log))+geom_density()
-ggplot(data=kc_house, mapping=aes(price_log_normal))+geom_density()
+DATA_cor<-kc_house[,num_col]; #corr test between x variable and y variable(price)      
+data_cor_matrix<-cor(DATA_cor);                                                 
+corr<-round(data_cor_matrix,2);
 
-ggplot(data=kc_house, mapping=aes(sqft_living))+geom_density()
-ggplot(data=kc_house, mapping=aes(sqft_living_normal))+geom_density()
-ggplot(data=kc_house, mapping=aes(sqft_living_log))+geom_density()
-ggplot(data=kc_house, mapping=aes(sqft_living_log_normal))+geom_density()
 
+library(randomForest)
 
-summary(kc_house$price_normal)
-summary(kc_house$price_log)
+rf<-randomForest(price~sqft_living+sqft_lot+waterfront+view+condition+grade+
+                   lat+long+sqft_living15+sqft_lot15+location+dist+price_per_lot+
+                   price_per_living+price_per_all+bath_per_bed+living_per_lot,data=kc_house,ntree=100,mtry=3,importance=T,na.action=na.omit)
 
+#renovated
 
-
-
-
-unique(kc_house$location)
-unique(kc_house$location)
-
-loc_group<-c("loc_group_1","loc_group_2","loc_group_3","loc_group_4","loc_group_5")
-loc_group_1<-c("11","21","31","41","51","61","71")
-loc_group_2<-c("12","22","32","42","52","62","72")
-loc_group_3<-c("13","23","33","43","53","63","73")
-loc_group_4<-c("14","24","34","44","54","64","74")
-loc_group_5<-c("15","25","35","45","55","65","75")
-
-
-
-for (i in (1:2)) {
-  
-  kc_house_loc<-kc_house[substr(kc_house$location,2,2)==i,]
-  
-  m<-lm(data=kc_house_loc, price~log(dist+1))
-  m
-  r<-as.character(round(summary(m)$r.squared*100,0))
-  r_square<-paste(r,"%",sep="")
-  
-  g <- ggplot(data=kc_house_loc, aes(x = dist, y = price))
-  g <- g + geom_point(aes(color = as.factor(price_q)), shape = 22, size = 3, stroke = 2)
-  g <- g + geom_smooth(method = "lm", aes(fill = r_square), formula = y~ log(x+1), color = "red", se = FALSE)
-  g
-  
-  assign(paste("g",i, sep = "_"), g)
-  
-}
-
-g_1
-g_2
-
-
-#data_group
-
-
-
-
-# EDA 
-
-#grade
-ggplot(data=kc_house)+
-  geom_bar(mapping=aes(x=as.factor(grade)))
-
-
-#price (response variable)
-
-ggplot(data=kc_house)+
-  geom_histogram(mapping=aes(x=price),binwidth = 200000)
-
-#many histograms with geom_freqpoly
-#Assumption : the distribution will move to the right, if the labeling has been proved as being effective.
-
-ggplot(data=kc_house,mapping=aes(x=price, color=as.factor(condition)))+
-  geom_freqpoly(bindwidth=200000)
-
-ggplot(data=kc_house[which(kc_house$grade>6),],mapping=aes(x=price, color=as.factor(grade)))+
-  xlim(0,4000000)+
-  geom_freqpoly(bindwidth=200000)
-
-#smoothing line is affected by outlier around 30 in bedrooms variable
-ggplot(data=kc_house,mapping=aes(x=bedrooms, y=price))+
-  geom_jitter()+
-  geom_smooth()
-
-ggplot(data=kc_house,mapping=aes(x=bedrooms, y=price))+
-  xlim(0,10)+
-  geom_jitter()+
-  geom_smooth()
-
-#factor로 바꿔서 boxplot을 적용
-#bedroom variable
-kc_house$bedrooms_fac<-as.factor(kc_house$bedrooms)
-ggplot(data=kc_house[which(kc_house$bedrooms<12),])+
-  geom_boxplot(mapping=aes(x=bedrooms_fac, y=price))+
-  geom_smooth(mapping=aes(x=bedrooms, y=price))
-
-#outlier들의 특성이 있을까?
-
-#bathroom variable
-kc_house$bathrooms_fac<-as.factor(kc_house$bathrooms)
-ggplot(data=kc_house)+
-  geom_boxplot(mapping=aes(x=bathrooms_fac, y=price))
-
-#sqrt_living variable
-ggplot(data=kc_house,mapping=aes(x=sqft_living, y=price))+
-  geom_point()+
-  geom_smooth()
-
-ggplot(data=kc_house,mapping=aes(x=sqft_living, y=price))+
-  geom_jitter(mapping=aes(col=bedrooms_fac))+
-  geom_smooth()
-
-ggplot(data=kc_house,mapping=aes(x=bedrooms_fac, y=sqft_living))+
-  geom_jitter()+
-  geom_smooth()
-
-
-M<-cor(kc_house[,c("bedrooms","bathrooms","sqft_living")])
-head(round(M,2))
-
-library(corrplot)
-corrplot(M, method="number")
-
-kc_house$room<-kc_house$bathrooms+kc_house$bedrooms
-
-
-M_2<-cor(kc_house[,c("room","sqft_living")])
-head(round(M_2,2))
-corrplot(M_2, method="number")
-
-M_3<-cor(kc_house[,c("room","price")])
-head(round(M_3,2))
-corrplot(M_3, method="number")
-
-M_4<-cor(kc_house[,c("sqft_living","price")])
-head(round(M_4,2))
-corrplot(M_4, method="number")
-
-
-
-#sqrt_lot variable
-
-ggplot(data=kc_house,mapping=aes(x=sqft_lot, y=price))+
-  geom_point()+
-  geom_smooth()
-
-summary(kc_house$sqft_lot)
-
-ggplot(data=kc_house[which(kc_house$sqft_lot<10688),],mapping=aes(x=sqft_lot, y=price))+
-  geom_point()+
-  geom_smooth()
-
-
-kc_house$sqft_lot_bi<-NA
-kc_house$sqft_lot_bi<-ifelse(kc_house$sqft_lot<10688,"0","1")
-
-
-p<-ggplot(data=kc_house,aes(x=as.factor(sqft_lot_bi)))+ 
-  geom_bar(aes(y = (..count..)) , fill = c('red','green'))
-p<-p+xlab("Lot: 0 - No , 1 - Yes") + ylab("Count")
-p<-p+labs(title="No lot Versus with lot ")
-p<-p+geom_text(aes(y = (..count..),label =   ifelse((..count..)==0,"",
-                                                    scales::percent((..count..)/sum(..count..)))), stat="count",colour="black") 
-p
-
-
-ggplot(data=kc_house,mapping=aes(x=sqft_lot_bi, y=price))+
-  geom_boxplot()
-
-
-
-
-
-
-
-# lot의 크기는 평균적인 집값을 예측하는 데는 도움이 되지 않음. 다만 outlier들의 분포가 4분위의 경우 더 커
-
-
-#sqrt_base variable
-
-ggplot(data=kc_house,aes(x=sqft_basement, y=price))+
-  geom_jitter()
-
-summary(kc_house$sqft_basement)
-
-#mass zero
-
-kc_house$sqft_basement_log<-ifelse(kc_house$sqft_basement==0,log(1),log(kc_house$sqft_basement))
-
-ggplot(data=kc_house,aes(x=sqft_basement_log, y=price))+
-  geom_jitter()
-
-kc_house$sqft_base_bi<-NA
-kc_house$sqft_base_bi<-ifelse(kc_house$sqft_basement==0,"0","1")
-
-ggplot(data=kc_house,aes(x=sqft_base_bi, y=price))+
-  geom_boxplot()
-
-
-
-#floors
-
-ggplot(data=kc_house,aes(x=as.factor(floors), y=price))+
-  geom_boxplot()
-
-
-#water front
-#water front의 유무는 가격정보에 영향을 미침     
-ggplot(data=kc_house,aes(x=as.factor(waterfront), y=price))+
-  geom_boxplot()
-
-#view
-#view의 상승에 따라 가격정보에 영향을 미침     
-ggplot(data=kc_house,aes(x=view, y=price))+
-  geom_point()
-
-ggplot(data=kc_house,aes(x=as.factor(view), y=price))+
-  geom_boxplot()
-
-#condition
-#If the condition score is three, the outliers spread most widely
-ggplot(data=kc_house,aes(x=as.factor(condition), y=price))+
-  geom_boxplot()
-
-#grade
-ggplot(data=kc_house,aes(x=as.factor(grade), y=price))+
-  geom_boxplot()
-
-
-#condition and grade
-ggplot(data=kc_house,aes(x=as.factor(condition), y=as.factor(grade)))+
-  geom_boxplot()
-
-#condition and grade are inverse relations?
-M_5<-cor(kc_house[,c("condition","grade")])
-head(round(M_5,2))
-corrplot(M_5, method="number")
-
-
-#sqft_above
-#sqft_above and price show the linear relsationship.
-#If we divide this line by grade, grade under 5 does not show any difference in their prices
-
-ggplot(data=kc_house,mapping=aes(x=sqft_above, y=price))+
-  geom_jitter(aes(col=as.factor(grade)))+
-  geom_smooth()
-
-ggplot(data=kc_house[which(kc_house$grade<6),],mapping=aes(x=sqft_above, y=price))+
-  geom_jitter(aes(col=as.factor(grade)))+
-  geom_smooth()
-
-ggplot(data=kc_house[which(kc_house$grade>=6),],mapping=aes(x=sqft_above, y=price))+
-  geom_jitter(aes(col=as.factor(grade)))+
-  geom_smooth()
-
-#yr_built
-
-kc_house$yr_built_elapsed<-2015-kc_house$yr_built
 kc_house$yr_renovated_bi<-ifelse(kc_house$yr_renovated==0,"0","1")
-kc_house$yr_renovated_elapsed<-ifelse(kc_house$yr_renovated==0,0,2015-kc_house$yr_renovated)
-
-
-ggplot(data=kc_house,mapping=aes(x=yr_built_elapsed, y=price))+
-  geom_jitter()+
-  geom_smooth()
-
-M_6<-cor(kc_house[,c("yr_built_elapsed","price")])
-head(round(M_6,2))
-corrplot(M_6, method="number")
-
-
-
-ggplot(data=kc_house,aes(x=as.factor(yr_renovated_bi), y=price))+
-  geom_boxplot()
-
-
-
-ggplot(data=kc_house[which(kc_house$yr_renovated_bi==1),],mapping=aes(x=yr_renovated_elapsed, y=price))+
-  geom_jitter()+
-  geom_smooth()
-
-
-M_7<-cor(kc_house[,c("yr_renovated_elapsed","price")])
-head(round(M_7,2))
-corrplot(M_7, method="number")
-
-
-
-#new index
-#bathroom per bedrooms
-
-kc_house$bath_per_bed<-ifelse(kc_house$bedrooms==0,0,kc_house$bathrooms/kc_house$bedrooms)
-summary(kc_house$bath_per_bed)
-ggplot(data=kc_house,aes(x=bath_per_bed, y=price))+geom_jitter()
-
-
-#이 사유로 이진변수로 변환
-
-ggplot(data=kc_house,aes(x=sqft_living,y=price,col=sqft_base_bi))+geom_jitter()
-ggplot(data=kc_house,aes(x=sqft_living,y=price,col=sqft_lot_bi))+geom_boxplot()
-
-ggplot(data=kc_house,aes(x=sqft_living,y=price,col=sqft_lot_bi))+geom_jitter()
-ggplot(data=kc_house,aes(x=sqft_living,y=price,col=sqft_lot_bi_2))+geom_jitter()
-ggplot(data=kc_house,aes(x=sqft_living,y=price,col=sqft_lot_bi_2))+geom_boxplot()
+kc_house$yr_renovated_elapsed<-ifelse(kc_house$yr_renovated==0,0,as.numeric(substr(kc_house$date,1,4))-kc_house$yr_renovated)
 
 
 
 
+#visualization
 
-#####
+
+
+#ggplotly(p)
+t
 
 
 
@@ -537,36 +559,83 @@ ggplot(data=kc_house,aes(x=sqft_living,y=price,col=sqft_lot_bi_2))+geom_boxplot(
 
 
 
-ggplot(data=kc_house[which(kc_house$zipcode == 98006),],mapping=aes(x=long,y=lat,shape=as.factor(zipcode)))+geom_point()
-
-
-label<-as.data.frame(kc_house$zipcode);
-df<-as.data.frame(cbind(x=kc_house$long,y=kc_house$lat,label));
 
 
 
-df<-kc_house[which(kc_house$price_q=="1"),c("long","lat","zipcode")]
-colnames(df)<-c("x","y","label")
-p<-ggplot(df,aes_all(c("x","y","label")));
-p+geom_text();
+
+contVars <- c("price", "sqft_living", "sqft_lot", "sqft_above", "sqft_basement", "sqft_living15", "sqft_lot15", "yr_built_elapsed")
+df3 <- kc_house[,contVars]
+df3 <- as.data.frame(melt(df3))
+
+u <- ggplot(df3, aes(value)) +
+  geom_density(aes(fill = variable)) +
+  facet_wrap(~variable, scales = "free") +
+  labs(x = "", y = "", fill = "") +
+  theme_minimal() +
+  scale_fill_tableau() +
+  theme(text = element_text(face = "bold"),
+        legend.position = "right",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(hjust = 0.5))
 
 
-df$x<-as.character(df$x);
-df$y<-as.character(df$y);
-df$x<-round(as.numeric(df$x),0);
-df$y<-round(as.numeric(df$y),0);
+df2_norm <- kc_house[,contVars]
+df2_norm <- as.data.frame(apply(df2_norm, 2,function(x)((x - min(x))/(max(x)-min(x)))))
+df2_norm <- as.data.frame(melt(df2_norm))
 
-p<-ggplot(df,aes_all(c("x","y","label")));
-p+geom_text();
+p <- ggplot(df2_norm, aes(variable, value)) +
+  geom_boxplot(aes(fill = variable)) +
+  coord_flip() +                                
+  scale_fill_tableau() +
+  labs(x = "", y = "") +
+  theme_minimal() +
+  theme(text = element_text(face = "bold"),
+        legend.position = "bottom",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_blank())   
+
+
+install.packages("GGally")
+library("GGally")
 
 
 
-ggplot(data=kc_house,mapping=aes(x=long,y=lat,color=as.factor(grade)))+geom_point()
-ggplot(data=kc_house[which(kc_house$grade=="6"),],mapping=aes(x=long,y=lat,color=as.factor(grade)))+geom_point()
-ggplot(data=kc_house[which(kc_house$grade=="7"),],mapping=aes(x=long,y=lat,color=as.factor(grade)))+geom_point()
-ggplot(data=kc_house[which(kc_house$grade=="8"),],mapping=aes(x=long,y=lat,color=as.factor(grade)))+geom_point()
-ggplot(data=kc_house[which(kc_house$grade=="9"),],mapping=aes(x=long,y=lat,color=as.factor(grade)))+geom_point()
-ggplot(data=kc_house[which(kc_house$grade=="10"),],mapping=aes(x=long,y=lat,color=as.factor(grade)))+geom_point()
-ggplot(data=kc_house[which(kc_house$grade=="11"),],mapping=aes(x=long,y=lat,color=as.factor(grade)))+geom_point()
-ggplot(data=kc_house[which(kc_house$grade=="12"),],mapping=aes(x=long,y=lat,color=as.factor(grade)))+geom_point()
-ggplot(data=kc_house[which(kc_house$grade=="13"),],mapping=aes(x=long,y=lat,color=as.factor(grade)))+geom_point()
+
+
+
+ggpairs(kc_house[,contVars]) +
+  theme_minimal() +
+  theme(text = element_text(face = "bold"),
+        axis.text.x = element_text(angle = 90),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+
+
+df1 <- kc_house[,fac_var]
+df1 <- sapply(df1, as.factor)
+df1 <- as.data.frame(melt(df1))
+df1$value <- factor(df1$value, levels=sort(as.numeric(levels(df1$value))), ordered=TRUE)
+
+
+t <- ggplot(df1, aes(value)) +
+  geom_bar(aes(fill = Var2)) + 
+  #scale_y_continuous(breaks = scales::pretty_breaks(n = 5)) +
+  #scale_x_discrete(expand = c(0,0)) +
+  facet_wrap(~Var2, scales = "free", nrow = 3) +
+  scale_fill_tableau() +
+  ggtitle("Count of each Discrete Variable") +
+  labs(fill = "", x = "", y = "") +
+  theme_minimal() +
+  theme(text = element_text(face = "bold"),
+        legend.position = "right",
+        axis.text.x = element_text(angle = 0),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(hjust = 0.5)) 
+
+t
+
