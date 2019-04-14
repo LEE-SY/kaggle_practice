@@ -1,3 +1,7 @@
+
+
+
+
 pckg<-c("dplyr","readxl","haven","ggplot2","pdftools", "tidyverse",
         "ggplot2", "ggthemes", "ggrepel", "tm", "grid","PerformanceAnalytics",
         "e1071","doBy","fmsb","corrplot","VIM","DMwR","rpart",
@@ -44,50 +48,76 @@ kc_house<- kc_house[train_ind, ]
 kc_house_test <- kc_house[-train_ind, ]
 
 
-fac_var<-c("waterfront","yr_built","yr_renovated","zipcode","grade")
-
-
-unique(kc_house$yr_built)
-
-
 ##overal EDA
 
-sapply(kc_house,class)
-kc_house[,fac_var]<-apply(kc_house[,fac_var],MARGIN=2,FUN=as.factor)
+
+
+date_var<-c("date","yr_built","yr_renovated")
+fac_var<-c("waterfront","zipcode","grade","condition")
+num_var<-c("price","bedrooms","bathrooms","sqft_living","sqft_lot","floors","view","sqft_above","sqft_basement","lat","long","sqft_living15","sqft_lot15")
+
 
 unique_zipcode<-unique(kc_house$zipcode)
+unique_waterfront<-unique(kc_house$waterfront)
+unique_grade<-unique(kc_house$grade)
+unique_condition<-unique(kc_house$condition)
+
 
 kc_house$zipcode<-factor(kc_house$zipcode,levels=unique_zipcode)
+kc_house$waterfront<-factor(kc_house$waterfront,levels=unique_waterfront)
+kc_house$grade<-factor(kc_house$grade,levels=unique_grade)
+kc_house$condition<-factor(kc_house$condition,levels=unique_condition)
 
-str(kc_house$zipcode)
-str(kc_house$yr_built)
-str(kc_house$waterfront)
+str(kc_house)
 
+install.packages("parsedate")
+library(parsedate)
 
-fac_var<-c("waterfront","yr_built","yr_renovated","zipcode","grade")
-num_var<-c("price","bedrooms","bathrooms","sqft_living","sqft_lot","floors","view","condition","sqft_above","sqft_basement","lat","long","sqft_living15","sqft_lot15")
-
-
-
-
-
-kc_house$waterfront<-as.factor(kc_house$waterfront)
-kc_house$yr_built<-as.factor(kc_house$yr_built)
-kc_house$yr_renovated<-as.factor(kc_house$yr_renovated)
-kc_house$zipcode<-as.factor(kc_house$zipcode)
-kc_house$grade<-as.factor(kc_house$grade)
-
+kc_house$date<-substr(kc_house$date,1,8)
+kc_house$date_YMD<-as.Date(kc_house$date,format="%Y%m%d")
 
 #numerical value
 chart.Correlation(kc_house[,num_var], pch = 19, method = "pearson")
+
+
+distribution <- as.data.frame(t(sapply(kc_house[,num_var], quantile)))
+distribution$Mean <- sapply(kc_house[,num_var], mean)
+distribution$SD <- sapply(kc_house[,num_var], sd)
+distribution$skenewss <- sapply(kc_house[,num_var], skewness)
+distribution$kurtosis <- sapply(kc_house[,num_var], kurtosis)
+distribution<-round(distribution, 2)
+
+
 
 
 
 
 ###feature engineering
 
-##date and year built
+##date, year built, renovated year (date)
+
+# the age of houses
 kc_house$age_sold<-as.numeric(substr(kc_house$date,1,4))-kc_house$yr_built
+kc_house$age_sold_group<-ifelse(kc_house$age_sold<10,"0~9",
+                                ifelse(kc_house$age_sold<20,"10~19",
+                                       ifelse(kc_house$age_sold<30,"20~29",
+                                              ifelse(kc_house$age_sold<40,"30~39",
+                                                     ifelse(kc_house$age_sold<50,"40~49",
+                                                            ifelse(kc_house$age_sold<60,"50~59",
+                                                                   ifelse(kc_house$age_sold<70,"60~69",
+                                                                          ifelse(kc_house$age_sold<80,"70~79",
+                                                                                 ifelse(kc_house$age_sold<90,"80~89",
+                                                                                        ifelse(kc_house$age_sold<100,"90~99","100+"))))))))))
+                                                                                               
+  
+
+#binary of renovation
+kc_house$yr_renovated_bi<-ifelse(kc_house$yr_renovated==0,"0","1") 
+kc_house$yr_renovated_bi<-factor(kc_house$yr_renovated_bi,levels=c("0","1")) #factor
+
+# the year
+kc_house$age_sold_reno<-ifelse(kc_house$yr_renovated==0,kc_house$age_sold,as.numeric(substr(kc_house$date,1,4))-kc_house$yr_renovated)
+kc_house$yr_built_reno<-ifelse(kc_house$yr_renovated==0,kc_house$yr_built,kc_house$yr_renovated)
 
 
 v1 <- ggplot(kc_house, aes(yr_built)) +
@@ -107,25 +137,95 @@ v2 <- ggplot(kc_house, aes(yr_built, price)) +
   theme(text = element_text(face = "bold"),
         plot.title=element_text(hjust=0.5))
 
-price_yr<- grid.arrange(v1,v2)
+v3 <- ggplot(kc_house, aes(yr_built_reno, price)) +
+  geom_smooth(se = TRUE, colour = "dodgerblue3") +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 8)) +
+  ggtitle("the price trend of houses built by adjusted year") +
+  theme_classic() +
+  theme(text = element_text(face = "bold"),
+        plot.title=element_text(hjust=0.5))
+
+
+v4<-ggplot(kc_house)+
+  geom_smooth(aes(yr_built_reno, price),se=FALSE, colour = "firebrick2")+
+  geom_smooth(aes(yr_built, price),se=FALSE, colour="dodgerblue3")+
+  xlab("(built/adjusted built) year ")+
+  ggtitle("comparison of price by adjusted year") +
+  theme_classic()+
+  theme(text = element_text(face = "bold"),
+      plot.title=element_text(hjust=0.5))
+
+price_yr<- grid.arrange(v1,v2,v3)
 price_yr
 
+v4
 
-v3 <- ggplot(price_out_up, aes(price)) +
+ reno_1 <- ggplot(kc_house%>%filter(yr_renovated_bi=="1"), aes(yr_renovated)) +
+   geom_bar(fill = "dodgerblue3") +
+   theme_classic() 
+
+ reno_1
+ 
+ 
+ reno_1_1 <- ggplot(kc_house%>%filter(yr_renovated_bi=="1"), aes(yr_built)) +
+   geom_bar(fill = "dodgerblue3") +
+   theme_classic() 
+
+ reno_1_1
+ 
+
+ reno_2 <- ggplot(kc_house%>%filter(yr_renovated_bi=="1"), aes(yr_renovated, price)) +
+   geom_smooth(se = TRUE, colour = "dodgerblue3") +
+   scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
+   scale_y_continuous(breaks = scales::pretty_breaks(n = 8)) +
+   theme_classic() 
+
+ reno_2
+ 
+ reno_2_2 <- ggplot(kc_house%>%filter(yr_renovated_bi=="1"), aes(yr_built, price)) +
+   geom_smooth(se = TRUE, colour = "dodgerblue3") +
+   scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
+   scale_y_continuous(breaks = scales::pretty_breaks(n = 8)) +
+   theme_classic()
+
+ reno_2_2
+ 
+  
+ price_reno_yr<- grid.arrange(reno_1, reno_1_1, reno_2,reno_2_2)
+ price_reno_yr
+ 
+
+ 
+reno3 <- ggplot(kc_house,aes(age_sold_group,price,color=yr_renovated_bi))+
+   geom_boxplot()+
+   ggtitle("renovation effect in the same age band") +
+   theme_classic() +
+   theme(text = element_text(face ="bold"),
+         plot.title = element_text(hjust = 0.5))
+
+reno3
+
+
+
+## price 
+
+
+price_1 <- ggplot(price_out_up, aes(price)) +
   geom_histogram(fill = "dodgerblue3",binwidth = 100000) +
   ggtitle("upper price outlier") +
   theme_classic() +
   theme(text = element_text(face ="bold"),
         plot.title = element_text(hjust = 0.5))
 
- v4 <- ggplot(price_out_low, aes(price)) +
+price_2  <- ggplot(price_out_low, aes(price)) +
     geom_histogram(fill = "dodgerblue3",binwidth = 5000) +
     ggtitle("lower price outlier") +
     theme_classic() +
     theme(text = element_text(face ="bold"),
           plot.title = element_text(hjust = 0.5))
 
- price_outlier<- grid.arrange(v3,v4)
+ price_outlier<- grid.arrange(price_1,price_2)
  price_outlier
 
 
@@ -188,8 +288,10 @@ html_1<-leaflet() %>%
   addTiles() %>%
   addMarkers(kc_house_q1[,c("long")],kc_house_q1[,c("lat")],clusterOptions = TRUE)
 
+html_1
+
 html_2<-leaflet() %>% 
-  setView(kc_house[1,c("long")],kc_house[1,c("lat")],zoom=4) %>%
+  setView(kc_house[1,c("long")],kc_house[1,c("lat")],zoom=10) %>%
   addTiles() %>%
   addMarkers(kc_house_q2[,c("long")],kc_house_q2[,c("lat")],clusterOptions = TRUE)
 
@@ -268,7 +370,7 @@ summary(kc_house[which(kc_house$sqft_lot_q=="1"),][7])
 
 
 ggplot(kc_house[which(kc_house$sqft_lot_q=="1"),],aes(sqft_lot))+
-  geom_histogram(binwidth=30000)+
+  geom_histogram(binwidth=5000)+
   theme_classic()
   
 
@@ -283,6 +385,40 @@ ggplot(kc_house[which(kc_house$sqft_lot_q=="7"),],aes(sqft_lot))+
 ggplot(kc_house[which(kc_house$sqft_lot_q=="8"),],aes(sqft_lot))+
   geom_histogram(binwidth=50)+
   theme_classic()
+
+unique_loc<-unique(kc_house$location)
+
+for (i in (1:27)) {
+
+  a<-ggplot(kc_house%>%filter(location==unique_loc[i]), aes(sqft_lot, price, col=as.factor(price_q)))+
+  geom_jitter()+
+  xlab(paste("lot of",unique_loc[i],sep=""))+  
+  ylab("price of houses")+
+  theme_classic()
+
+  
+  assign(paste("a",i,sep=""),a)
+}
+
+grid.arrange(a1,a2,a3)
+grid.arrange(a4,a5,a6)
+grid.arrange(a7,a8,a9)
+grid.arrange(a10,a11,a12)
+grid.arrange(a13,a14,a15)
+grid.arrange(a16,a17,a18)
+grid.arrange(a19,a20,a21)
+grid.arrange(a19,a20,a21)
+grid.arrange(a22,a23,a24)
+grid.arrange(a25,a26,a27)
+
+                       
+lot_price
+  
+  
+  
+price_yr<- grid.arrange(v1,v2,v3)
+
+
 
 
 
@@ -299,7 +435,7 @@ kc_house$sqft_base_bi<-NA
 kc_house$sqft_base_bi<-ifelse(kc_house$sqft_basement==0,"0","1")
 summary(kc_house$sqft_basement_log)
 
-#yr_built
+
 
 
 
@@ -538,10 +674,7 @@ rf<-randomForest(price~sqft_living+sqft_lot+waterfront+view+condition+grade+
                    lat+long+sqft_living15+sqft_lot15+location+dist+price_per_lot+
                    price_per_living+price_per_all+bath_per_bed+living_per_lot,data=kc_house,ntree=100,mtry=3,importance=T,na.action=na.omit)
 
-#renovated
 
-kc_house$yr_renovated_bi<-ifelse(kc_house$yr_renovated==0,"0","1")
-kc_house$yr_renovated_elapsed<-ifelse(kc_house$yr_renovated==0,0,as.numeric(substr(kc_house$date,1,4))-kc_house$yr_renovated)
 
 
 
